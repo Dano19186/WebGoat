@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import javax.xml.XMLConstants;
 import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBElement;
 import javax.xml.bind.JAXBException;
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamException;
@@ -94,18 +95,22 @@ public class CommentsCache {
    * Comment class can be directly used in the controller method (instead of a String)
    */
   protected Comment parseXml(String xml) throws JAXBException, XMLStreamException {
-    var jc = JAXBContext.newInstance(Comment.class);
-    var xif = XMLInputFactory.newInstance();
+      var jc = JAXBContext.newInstance(Comment.class);
+      var xif = XMLInputFactory.newInstance();
 
-    if (webSession.isSecurityEnabled()) {
-      xif.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, ""); // Compliant
-      xif.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, ""); // compliant
-    }
+      if (webSession.isSecurityEnabled()) {
+          // Desactivar el acceso a entidades externas
+          xif.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+          xif.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+          // Desactivar el soporte para DTD y entidades externas
+          xif.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+          xif.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
+      }
 
-    var xsr = xif.createXMLStreamReader(new StringReader(xml));
-
-    var unmarshaller = jc.createUnmarshaller();
-    return (Comment) unmarshaller.unmarshal(xsr);
+      var reader = xif.createXMLStreamReader(new StringReader(xml));
+      var unmarshaller = jc.createUnmarshaller();
+      JAXBElement<Comment> jaxbElement = unmarshaller.unmarshal(reader, Comment.class);
+      return jaxbElement.getValue();
   }
 
   protected Optional<Comment> parseJson(String comment) {
