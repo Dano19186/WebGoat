@@ -22,121 +22,117 @@
 
 package org.owasp.webgoat.lessons.xxe;
 
-import static java.util.Optional.empty;
-import static java.util.Optional.of;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.io.StringReader;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import javax.xml.XMLConstants;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBElement;
-import javax.xml.bind.JAXBException;
-import javax.xml.stream.XMLInputFactory;
-import javax.xml.stream.XMLStreamException;
 import org.owasp.webgoat.container.session.WebSession;
 import org.owasp.webgoat.container.users.WebGoatUser;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
+import javax.xml.XMLConstants;
+import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBException;
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamException;
+import java.io.IOException;
+import java.io.StringReader;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+import static java.util.Optional.empty;
+import static java.util.Optional.of;
+
 @Component
 @Scope("singleton")
 public class CommentsCache {
 
-  static class Comments extends ArrayList<Comment> {
-    void sort() {
-      sort(Comparator.comparing(Comment::getDateTime).reversed());
+    private static final Comments comments = new Comments();
+    private static final Map<WebGoatUser, Comments> userComments = new HashMap<>();
+    private static final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd, HH:mm:ss");
+    private final WebSession webSession;
+
+    public CommentsCache(WebSession webSession) {
+        this.webSession = webSession;
+        initDefaultComments();
     }
-  }
 
-  private static final Comments comments = new Comments();
-  private static final Map<WebGoatUser, Comments> userComments = new HashMap<>();
-  private static final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd, HH:mm:ss");
-
-  private final WebSession webSession;
-
-  public CommentsCache(WebSession webSession) {
-    this.webSession = webSession;
-    initDefaultComments();
-  }
-
-  void initDefaultComments() {
-    comments.add(new Comment("webgoat", LocalDateTime.now().format(fmt), "Silly cat...."));
-    comments.add(
-        new Comment(
-            "guest",
-            LocalDateTime.now().format(fmt),
-            "I think I will use this picture in one of my projects."));
-    comments.add(new Comment("guest", LocalDateTime.now().format(fmt), "Lol!! :-)."));
-  }
-
-  protected Comments getComments() {
-    Comments allComments = new Comments();
-    Comments commentsByUser = userComments.get(webSession.getUser());
-    if (commentsByUser != null) {
-      allComments.addAll(commentsByUser);
+    void initDefaultComments() {
+        comments.add(new Comment("webgoat", LocalDateTime.now().format(fmt), "Silly cat...."));
+        comments.add(
+                new Comment(
+                        "guest",
+                        LocalDateTime.now().format(fmt),
+                        "I think I will use this picture in one of my projects."));
+        comments.add(new Comment("guest", LocalDateTime.now().format(fmt), "Lol!! :-)."));
     }
-    allComments.addAll(comments);
-    allComments.sort();
-    return allComments;
-  }
 
-  /**
-   * Notice this parse method is not a "trick" to get the XXE working, we need to catch some of the
-   * exception which might happen during when users post message (we want to give feedback track
-   * progress etc). In real life the XmlMapper bean defined above will be used automatically and the
-   * Comment class can be directly used in the controller method (instead of a String)
-   */
-  protected Comment parseXml(String xml) throws JAXBException, XMLStreamException {
-      var jc = JAXBContext.newInstance(Comment.class);
-      var xif = XMLInputFactory.newInstance();
-
-      if (webSession.isSecurityEnabled()) {
-          // Desactivar el acceso a entidades externas
-          xif.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-          xif.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-          // Desactivar el soporte para DTD y entidades externas
-          xif.setProperty(XMLInputFactory.SUPPORT_DTD, false);
-          xif.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
-      }
-
-      var reader = xif.createXMLStreamReader(new StringReader(xml));
-      var unmarshaller = jc.createUnmarshaller();
-      JAXBElement<Comment> jaxbElement = unmarshaller.unmarshal(reader, Comment.class);
-      return jaxbElement.getValue();
-  }
-
-  protected Optional<Comment> parseJson(String comment) {
-    ObjectMapper mapper = new ObjectMapper();
-    try {
-      return of(mapper.readValue(comment, Comment.class));
-    } catch (IOException e) {
-      return empty();
+    protected Comments getComments() {
+        Comments allComments = new Comments();
+        Comments commentsByUser = userComments.get(webSession.getUser());
+        if (commentsByUser != null) {
+            allComments.addAll(commentsByUser);
+        }
+        allComments.addAll(comments);
+        allComments.sort();
+        return allComments;
     }
-  }
 
-  public void addComment(Comment comment, boolean visibleForAllUsers) {
-    comment.setDateTime(LocalDateTime.now().format(fmt));
-    comment.setUser(webSession.getUserName());
-    if (visibleForAllUsers) {
-      comments.add(comment);
-    } else {
-      var comments = userComments.getOrDefault(webSession.getUserName(), new Comments());
-      comments.add(comment);
-      userComments.put(webSession.getUser(), comments);
+    /**
+     * Notice this parse method is not a "trick" to get the XXE working, we need to catch some of the
+     * exception which might happen during when users post message (we want to give feedback track
+     * progress etc). In real life the XmlMapper bean defined above will be used automatically and the
+     * Comment class can be directly used in the controller method (instead of a String)
+     */
+    protected Comment parseXml(String xml) throws JAXBException, XMLStreamException {
+        var jc = JAXBContext.newInstance(Comment.class);
+        var xif = XMLInputFactory.newInstance();
+
+        xif.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        xif.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+        xif.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
+        xif.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+
+        if (webSession != null && webSession.isSecurityEnabled()) {
+            xif.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+            xif.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+        }
+
+        var xsr = xif.createXMLStreamReader(new StringReader(xml));
+
+        var unmarshaller = jc.createUnmarshaller();
+        return (Comment) unmarshaller.unmarshal(xsr);
     }
-  }
 
-  public void reset(WebGoatUser user) {
-    comments.clear();
-    userComments.remove(user);
-    initDefaultComments();
-  }
+    protected Optional<Comment> parseJson(String comment) {
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            return of(mapper.readValue(comment, Comment.class));
+        } catch (IOException e) {
+            return empty();
+        }
+    }
+
+    public void addComment(Comment comment, boolean visibleForAllUsers) {
+        comment.setDateTime(LocalDateTime.now().format(fmt));
+        comment.setUser(webSession.getUserName());
+        if (visibleForAllUsers) {
+            comments.add(comment);
+        } else {
+            var comments = userComments.getOrDefault(webSession.getUserName(), new Comments());
+            comments.add(comment);
+            userComments.put(webSession.getUser(), comments);
+        }
+    }
+
+    public void reset(WebGoatUser user) {
+        comments.clear();
+        userComments.remove(user);
+        initDefaultComments();
+    }
+
+    static class Comments extends ArrayList<Comment> {
+        void sort() {
+            sort(Comparator.comparing(Comment::getDateTime).reversed());
+        }
+    }
 }
