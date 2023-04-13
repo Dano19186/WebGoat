@@ -34,7 +34,11 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.config.annotation.web.configurers.ExpressionUrlAuthorizationConfigurer;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.NoOpPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.security.SecureRandom;
 
 /** Security configuration for WebGoat. */
 @Configuration
@@ -64,7 +68,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
   @Autowired
   public void configureGlobal(AuthenticationManagerBuilder auth) throws Exception {
-    auth.userDetailsService(userDetailsService); // .passwordEncoder(bCryptPasswordEncoder());
+    auth.userDetailsService(userDetailsService).passwordEncoder(passwordEncoder()); // .passwordEncoder(bCryptPasswordEncoder());
   }
 
   @Bean
@@ -79,8 +83,8 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
     return super.authenticationManager();
   }
 
-  @Bean
-  public NoOpPasswordEncoder passwordEncoder() {
-    return (NoOpPasswordEncoder) NoOpPasswordEncoder.getInstance();
-  }
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(10, new SecureRandom());
+    }
 }
